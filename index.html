@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#0f8a5f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="記帳本">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="icon" href="icons/icon-192.png">
+<title>記帳本 · 我的每月記帳</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <h1>💰 記帳本</h1>
+  <div id="header-stat" class="header-stat"></div>
+</header>
+
+<main id="app">
+
+  <!-- 總覽 -->
+  <section id="view-overview" class="view">
+    <div class="period-switcher">
+      <button type="button" id="period-prev" class="period-nav-btn" aria-label="上一期">‹</button>
+      <div class="period-label" id="period-label"></div>
+      <button type="button" id="period-next" class="period-nav-btn" aria-label="下一期">›</button>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat-card">
+        <span class="stat-label">本期收入</span>
+        <span class="stat-value" id="stat-income">$0</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">本期花費</span>
+        <span class="stat-value" id="stat-expense">$0</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">本期存下</span>
+        <span class="stat-value" id="stat-saved">$0</span>
+      </div>
+    </div>
+
+    <h2 class="section-title">支出分類</h2>
+    <div id="category-breakdown" class="category-breakdown"></div>
+    <p id="category-empty" class="empty-inline" hidden>這期還沒有任何支出紀錄</p>
+
+    <h2 class="section-title">帳戶餘額</h2>
+    <div id="account-balances" class="account-balance-list"></div>
+
+    <h2 class="section-title">本期明細</h2>
+    <ul id="tx-list" class="tx-list"></ul>
+    <p id="tx-empty" class="empty-inline" hidden>這期還沒有任何紀錄</p>
+  </section>
+
+  <!-- 記一筆 -->
+  <section id="view-add" class="view" hidden>
+    <form id="tx-form">
+      <div class="segmented" id="tx-kind-toggle">
+        <button type="button" class="segmented-btn active" data-kind="expense">💸 支出</button>
+        <button type="button" class="segmented-btn" data-kind="income">💵 收入</button>
+      </div>
+
+      <label>
+        帳戶 <span class="req">*</span>
+        <select id="tx-account" required></select>
+      </label>
+      <label>
+        分類 <span class="req">*</span>
+        <select id="tx-category" required></select>
+      </label>
+      <label>
+        金額 <span class="req">*</span>
+        <input type="number" id="tx-amount" placeholder="0" min="0" step="1" inputmode="numeric" required>
+      </label>
+      <label>
+        日期 <span class="req">*</span>
+        <input type="date" id="tx-date" required>
+      </label>
+      <label>
+        算入哪一期 <span class="opt">(信用卡帳單扣款可改選上一期)</span>
+        <select id="tx-period"></select>
+      </label>
+      <label>
+        備註 <span class="opt">(選填)</span>
+        <input type="text" id="tx-note" placeholder="例如：和朋友聚餐" autocomplete="off">
+      </label>
+      <button type="submit" class="btn btn-primary">＋ 記一筆</button>
+      <p id="tx-success" class="add-success" hidden>已記錄！✅</p>
+    </form>
+  </section>
+
+  <!-- 分配薪水 -->
+  <section id="view-allocate" class="view" hidden>
+    <form id="alloc-form">
+      <label>
+        發薪日期 <span class="req">*</span>
+        <input type="date" id="alloc-date" required>
+      </label>
+      <label>
+        薪水總額 <span class="req">*</span>
+        <input type="number" id="alloc-salary" placeholder="0" min="0" step="1" inputmode="numeric" required>
+      </label>
+
+      <div class="alloc-splits" id="alloc-splits"></div>
+
+      <div class="alloc-remaining" id="alloc-remaining">尚未分配：$0</div>
+
+      <label>
+        備註 <span class="opt">(選填)</span>
+        <input type="text" id="alloc-note" placeholder="例如：9月薪水" autocomplete="off">
+      </label>
+      <button type="submit" class="btn btn-primary">💾 儲存分配</button>
+      <p id="alloc-success" class="add-success" hidden>已儲存分配！✅</p>
+    </form>
+
+    <h2 class="section-title">分配紀錄</h2>
+    <ul id="alloc-list" class="alloc-list"></ul>
+    <p id="alloc-empty" class="empty-inline" hidden>還沒有任何分配紀錄</p>
+  </section>
+
+  <!-- 帳戶 -->
+  <section id="view-accounts" class="view" hidden>
+    <h2 class="section-title">我的帳戶</h2>
+    <ul id="accounts-list" class="accounts-list"></ul>
+
+    <h2 class="section-title">新增帳戶</h2>
+    <form id="account-form">
+      <label>
+        帳戶名稱 <span class="req">*</span>
+        <input type="text" id="account-name" placeholder="例如：旅遊基金" autocomplete="off" required>
+      </label>
+      <label>
+        圖示 <span class="opt">(選填，一個emoji)</span>
+        <input type="text" id="account-icon" placeholder="🎯" maxlength="2" autocomplete="off">
+      </label>
+      <label>
+        類型 <span class="req">*</span>
+        <select id="account-type" required></select>
+      </label>
+      <button type="submit" class="btn btn-primary">＋ 新增帳戶</button>
+    </form>
+
+    <div class="danger-zone">
+      <h3>資料備份</h3>
+      <div class="backup-row">
+        <button type="button" class="btn btn-secondary" id="btn-export">⬇️ 匯出 JSON</button>
+        <label class="btn btn-secondary file-label">
+          ⬆️ 匯入 JSON
+          <input type="file" id="import-file" accept="application/json" hidden>
+        </label>
+      </div>
+      <p class="hint-text">記帳資料目前儲存在「這支手機瀏覽器」裡。定期匯出備份，避免換手機或清資料時遺失。</p>
+    </div>
+  </section>
+
+</main>
+
+<nav class="tab-bar">
+  <button class="tab-btn active" data-view="overview">
+    <span class="tab-icon">📊</span><span>總覽</span>
+  </button>
+  <button class="tab-btn" data-view="add">
+    <span class="tab-icon">➕</span><span>記一筆</span>
+  </button>
+  <button class="tab-btn" data-view="allocate">
+    <span class="tab-icon">🎯</span><span>分配薪水</span>
+  </button>
+  <button class="tab-btn" data-view="accounts">
+    <span class="tab-icon">🏦</span><span>帳戶</span>
+  </button>
+</nav>
+
+<script src="app.js"></script>
+</body>
+</html>

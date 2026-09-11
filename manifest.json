@@ -1,0 +1,26 @@
+{
+  "name": "記帳本 · 我的每月記帳",
+  "short_name": "記帳本",
+  "description": "以發薪日為週期記帳，把薪水分配到日常、儲蓄、信用卡等帳戶，清楚掌握每月花了多少、存了多少。",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f8f6",
+  "theme_color": "#0f8a5f",
+  "orientation": "portrait",
+  "lang": "zh-Hant",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

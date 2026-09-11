@@ -70,7 +70,7 @@
         帳戶 <span class="req">*</span>
         <select id="tx-account" required></select>
       </label>
-      <label>
+      <label id="field-category">
         分類 <span class="req">*</span>
         <select id="tx-category" required></select>
       </label>
@@ -78,6 +78,17 @@
         金額 <span class="req">*</span>
         <input type="number" id="tx-amount" placeholder="0" min="0" step="1" inputmode="numeric" required>
       </label>
+
+      <label class="checkbox-label" id="tx-split-toggle-row">
+        <input type="checkbox" id="tx-split-toggle">
+        拆分成多個分類金額 <span class="opt">（例如：信用卡帳單一次輸入，內含多筆分類）</span>
+      </label>
+      <div class="tx-splits" id="tx-splits" hidden>
+        <div class="tx-split-rows" id="tx-split-rows"></div>
+        <button type="button" class="btn btn-secondary" id="tx-split-add">＋ 新增分類</button>
+        <div class="alloc-remaining" id="tx-split-remaining">尚未分配：$0</div>
+      </div>
+
       <label>
         日期 <span class="req">*</span>
         <input type="date" id="tx-date" required>
@@ -115,7 +126,8 @@
         備註 <span class="opt">(選填)</span>
         <input type="text" id="alloc-note" placeholder="例如：9月薪水" autocomplete="off">
       </label>
-      <button type="submit" class="btn btn-primary">💾 儲存分配</button>
+      <button type="submit" class="btn btn-primary" id="alloc-submit-btn">💾 儲存分配</button>
+      <button type="button" class="btn btn-secondary" id="alloc-cancel-edit" hidden>取消編輯</button>
       <p id="alloc-success" class="add-success" hidden>已儲存分配！✅</p>
     </form>
 

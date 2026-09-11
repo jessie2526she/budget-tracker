@@ -361,10 +361,13 @@
       .join('');
   }
 
+  function categoryOptionsHtml(kind) {
+    const list = kind === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
+    return list.map((c) => `<option value="${c.id}">${c.icon} ${c.label}</option>`).join('');
+  }
+
   function populateTxCategorySelect() {
-    const sel = document.getElementById('tx-category');
-    const list = txKind === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
-    sel.innerHTML = list.map((c) => `<option value="${c.id}">${c.icon} ${c.label}</option>`).join('');
+    document.getElementById('tx-category').innerHTML = categoryOptionsHtml(txKind);
   }
 
   function populateTxPeriodSelect(dateMs) {
@@ -383,6 +386,15 @@
       b.classList.toggle('active', b.dataset.kind === kind);
     });
     populateTxCategorySelect();
+
+    const splitToggleRow = document.getElementById('tx-split-toggle-row');
+    if (kind !== 'expense') {
+      splitToggleRow.hidden = true;
+      document.getElementById('tx-split-toggle').checked = false;
+      setTxSplitMode(false);
+    } else {
+      splitToggleRow.hidden = false;
+    }
   }
 
   document.querySelectorAll('#tx-kind-toggle .segmented-btn').forEach((btn) => {
@@ -393,9 +405,57 @@
     if (e.target.value) populateTxPeriodSelect(parseDateInput(e.target.value));
   });
 
+  /* ---- split mode (one entry, multiple category amounts) ---- */
+  function setTxSplitMode(on) {
+    document.getElementById('field-category').hidden = on;
+    document.getElementById('tx-splits').hidden = !on;
+    if (on && document.querySelectorAll('.tx-split-row').length === 0) {
+      addTxSplitRow();
+      addTxSplitRow();
+    }
+    updateTxSplitRemaining();
+  }
+
+  document.getElementById('tx-split-toggle').addEventListener('change', (e) => {
+    setTxSplitMode(e.target.checked);
+  });
+
+  function addTxSplitRow() {
+    const row = document.createElement('div');
+    row.className = 'tx-split-row';
+    row.innerHTML = `
+      <select class="tx-split-category">${categoryOptionsHtml('expense')}</select>
+      <input type="number" class="tx-split-amount" placeholder="0" min="0" step="1" inputmode="numeric">
+      <button type="button" class="tx-split-remove" aria-label="移除">✕</button>
+    `;
+    row.querySelector('.tx-split-amount').addEventListener('input', updateTxSplitRemaining);
+    row.querySelector('.tx-split-remove').addEventListener('click', () => {
+      row.remove();
+      updateTxSplitRemaining();
+    });
+    document.getElementById('tx-split-rows').appendChild(row);
+  }
+
+  document.getElementById('tx-split-add').addEventListener('click', addTxSplitRow);
+  document.getElementById('tx-amount').addEventListener('input', updateTxSplitRemaining);
+
+  function updateTxSplitRemaining() {
+    const total = Number(document.getElementById('tx-amount').value) || 0;
+    let sum = 0;
+    document.querySelectorAll('.tx-split-amount').forEach((i) => { sum += Number(i.value) || 0; });
+    const remaining = total - sum;
+    const el = document.getElementById('tx-split-remaining');
+    el.textContent = remaining === 0 && total > 0 ? '✅ 分類金額加總相符' : `尚未分類：${fmtMoney(remaining)}`;
+    el.classList.toggle('balanced', remaining === 0 && total > 0);
+    el.classList.toggle('unbalanced', remaining !== 0);
+  }
+
   function initTxForm() {
     populateTxAccountSelect();
+    document.getElementById('tx-split-toggle').checked = false;
+    document.getElementById('tx-split-rows').innerHTML = '';
     setTxKind('expense');
+    setTxSplitMode(false);
     const today = new Date();
     document.getElementById('tx-date').value = fmtDateInput(today);
     document.getElementById('tx-amount').value = '';
@@ -406,24 +466,42 @@
   document.getElementById('tx-form').addEventListener('submit', (e) => {
     e.preventDefault();
     const accountId = document.getElementById('tx-account').value;
-    const category = document.getElementById('tx-category').value;
     const amount = Number(document.getElementById('tx-amount').value);
     const dateStr = document.getElementById('tx-date').value;
     const period = document.getElementById('tx-period').value;
     const note = document.getElementById('tx-note').value.trim();
+    const splitMode = txKind === 'expense' && document.getElementById('tx-split-toggle').checked;
 
     if (!accountId || !amount || amount <= 0 || !dateStr) return;
 
-    data.transactions.unshift({
-      id: uid(),
-      kind: txKind,
-      date: parseDateInput(dateStr),
-      period,
-      accountId,
-      category,
-      amount,
-      note,
-    });
+    if (splitMode) {
+      const rows = [];
+      document.querySelectorAll('.tx-split-row').forEach((row) => {
+        const category = row.querySelector('.tx-split-category').value;
+        const rowAmount = Number(row.querySelector('.tx-split-amount').value) || 0;
+        if (rowAmount > 0) rows.push({ category, amount: rowAmount });
+      });
+      if (rows.length === 0) {
+        alert('請至少輸入一筆分類金額');
+        return;
+      }
+      const sum = rows.reduce((s, r) => s + r.amount, 0);
+      if (Math.abs(sum - amount) > 0.5) {
+        const ok = confirm(`分類金額加總 ${fmtMoney(sum)} 跟輸入的總額 ${fmtMoney(amount)} 不同，確定要這樣送出嗎？`);
+        if (!ok) return;
+      }
+      for (const r of rows) {
+        data.transactions.unshift({
+          id: uid(), kind: 'expense', date: parseDateInput(dateStr), period, accountId,
+          category: r.category, amount: r.amount, note,
+        });
+      }
+    } else {
+      const category = document.getElementById('tx-category').value;
+      data.transactions.unshift({
+        id: uid(), kind: txKind, date: parseDateInput(dateStr), period, accountId, category, amount, note,
+      });
+    }
     Store.save(data);
 
     initTxForm();
@@ -432,12 +510,15 @@
   });
 
   /* ---------------- Allocate salary ---------------- */
-  function renderAllocSplitsInputs() {
+  let editingAllocId = null;
+
+  function renderAllocSplitsInputs(presetByAccountId) {
     const container = document.getElementById('alloc-splits');
     container.innerHTML = data.accounts.map((a) => `
       <div class="alloc-split-row" data-account-id="${a.id}">
         <span class="alloc-split-label">${escapeHtml(a.icon)} ${escapeHtml(a.name)}</span>
-        <input type="number" class="alloc-split-input" min="0" step="1" placeholder="0" inputmode="numeric">
+        <input type="number" class="alloc-split-input" min="0" step="1" placeholder="0" inputmode="numeric"
+          value="${presetByAccountId && presetByAccountId[a.id] ? presetByAccountId[a.id] : ''}">
       </div>
     `).join('');
     container.querySelectorAll('.alloc-split-input').forEach((inp) => {
@@ -458,13 +539,42 @@
 
   document.getElementById('alloc-salary').addEventListener('input', updateAllocRemaining);
 
+  function setAllocEditMode(alloc) {
+    editingAllocId = alloc ? alloc.id : null;
+    document.getElementById('alloc-submit-btn').textContent = editingAllocId ? '💾 更新這筆分配' : '💾 儲存分配';
+    document.getElementById('alloc-cancel-edit').hidden = !editingAllocId;
+  }
+
+  document.getElementById('alloc-cancel-edit').addEventListener('click', () => {
+    initAllocForm();
+  });
+
   function initAllocForm() {
+    setAllocEditMode(null);
     renderAllocSplitsInputs();
     document.getElementById('alloc-date').value = fmtDateInput(new Date());
     document.getElementById('alloc-salary').value = '';
     document.getElementById('alloc-note').value = '';
     updateAllocRemaining();
     renderAllocList();
+  }
+
+  function loadAllocIntoForm(alloc, { asCopy } = {}) {
+    setAllocEditMode(asCopy ? null : alloc);
+    let dateMs = alloc.date;
+    if (asCopy) {
+      const d = new Date(alloc.date);
+      d.setMonth(d.getMonth() + 1);
+      dateMs = d.getTime();
+    }
+    document.getElementById('alloc-date').value = fmtDateInput(new Date(dateMs));
+    document.getElementById('alloc-salary').value = alloc.salaryAmount;
+    document.getElementById('alloc-note').value = alloc.note || '';
+    const presetByAccountId = {};
+    alloc.splits.forEach((s) => { presetByAccountId[s.accountId] = s.amount; });
+    renderAllocSplitsInputs(presetByAccountId);
+    updateAllocRemaining();
+    document.getElementById('alloc-date').scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   document.getElementById('alloc-form').addEventListener('submit', (e) => {
@@ -486,7 +596,14 @@
       return;
     }
 
-    data.allocations.unshift({ id: uid(), date: parseDateInput(dateStr), salaryAmount, splits, note });
+    if (editingAllocId) {
+      const idx = data.allocations.findIndex((x) => x.id === editingAllocId);
+      if (idx !== -1) {
+        data.allocations[idx] = { id: editingAllocId, date: parseDateInput(dateStr), salaryAmount, splits, note };
+      }
+    } else {
+      data.allocations.unshift({ id: uid(), date: parseDateInput(dateStr), salaryAmount, splits, note });
+    }
     Store.save(data);
 
     initAllocForm();
@@ -520,11 +637,18 @@
         <div class="alloc-row-top"><span>${dateLabel} 發薪</span><span>${fmtMoney(a.salaryAmount)}</span></div>
         ${a.note ? `<div class="alloc-row-sub">${escapeHtml(a.note)}</div>` : ''}
         <div class="alloc-chips">${chips}</div>
-        <div class="alloc-row-actions"><button type="button">刪除</button></div>
+        <div class="alloc-row-actions">
+          <button type="button" class="alloc-copy-btn">📋 複製到下個月</button>
+          <button type="button" class="alloc-edit-btn">✏️ 編輯</button>
+          <button type="button" class="alloc-delete-btn danger">🗑 刪除</button>
+        </div>
       `;
-      li.querySelector('.alloc-row-actions button').addEventListener('click', () => {
+      li.querySelector('.alloc-copy-btn').addEventListener('click', () => loadAllocIntoForm(a, { asCopy: true }));
+      li.querySelector('.alloc-edit-btn').addEventListener('click', () => loadAllocIntoForm(a, { asCopy: false }));
+      li.querySelector('.alloc-delete-btn').addEventListener('click', () => {
         if (confirm('確定要刪除這筆分配紀錄嗎？')) {
           data.allocations = data.allocations.filter((x) => x.id !== a.id);
+          if (editingAllocId === a.id) initAllocForm();
           Store.save(data);
           renderAllocList();
           renderHeaderStat();
